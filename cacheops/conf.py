@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 from copy import deepcopy
+
+import warnings
 import redis
 
 from django.conf import settings
@@ -19,12 +21,26 @@ profiles = {
 for key in profiles:
     profiles[key] = dict(profile_defaults, **profiles[key])
 
+
+class SafeRedis(redis.Redis):
+    """
+    Just a thin wrapper to consistently safeguard from crashing the entire application
+    if our cache server is down or there are network communication issues.
+    """
+    def execute_command(self, *args, **options):
+        try:
+            return super(SafeRedis, self).execute_command(*args, **options)
+        except redis.ConnectionError, e:
+            warnings.warn("The cacheops cache is unreachable! Error: %s" % e, RuntimeWarning)
+
+
 # Connecting to redis
 try:
     redis_conf = settings.CACHEOPS_REDIS
 except AttributeError:
     raise ImproperlyConfigured('You must specify non-empty CACHEOPS_REDIS setting to use cacheops')
-redis_client = redis.Redis(**redis_conf)
+redis_client = SafeRedis(**redis_conf)
+
 
 
 model_profiles = {}
