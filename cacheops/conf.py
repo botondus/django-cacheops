@@ -39,7 +39,10 @@ try:
     redis_conf = settings.CACHEOPS_REDIS
 except AttributeError:
     raise ImproperlyConfigured('You must specify non-empty CACHEOPS_REDIS setting to use cacheops')
-redis_client = SafeRedis(**redis_conf)
+
+raise_on_failure = getattr(settings, 'CACHEOPS_RAISE_ON_FAILURE', True)
+
+redis_client = redis.Redis(**redis_conf) if raise_on_failure else SafeRedis(**redis_conf)
 
 
 
