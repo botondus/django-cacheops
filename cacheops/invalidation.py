@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
+import redis
 from redis.exceptions import WatchError
+import warnings
 
 from cacheops.conf import redis_client
 from cacheops.utils import get_model_name, non_proxy
@@ -46,7 +48,11 @@ class ConjSchemes(object):
         txn = redis_client.pipeline()
         txn.get(self.get_version_key(model))
         txn.smembers(self.get_lookup_key(model_name))
-        version, members = txn.execute()
+        try:
+            version, members = txn.execute()
+        except redis.ConnectionError, e:
+            warnings.warn("The cacheops cache is unreachable! Error: %s" % e, RuntimeWarning)
+            return []
 
         self.local[model_name] = set(map(deserialize_scheme, members))
         self.local[model_name].add(()) # Всегда добавляем пустую схему
@@ -143,7 +149,12 @@ def invalidate_from_dict(model, values):
         # NOTE: we delete fetched cache_keys later which makes a tiny possibility that something
         #       will fail in the middle leaving those cache keys hanging without invalidators.
         #       The alternative WATCH-based optimistic locking proved to be pessimistic.
-        version, cache_keys, _ = redis_client.transaction(_invalidate_conjs)
+        try:
+            version, cache_keys, _ = redis_client.transaction(_invalidate_conjs)
+        except redis.ConnectionError, e:
+            warnings.warn("The cacheops cache is unreachable! Error: %s" % e, RuntimeWarning)
+            return
+
         if cache_keys:
             redis_client.delete(*cache_keys)
 
